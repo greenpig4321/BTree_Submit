@@ -8,8 +8,8 @@
 #include <map>
 #include <iostream>
 #include <fstream>
-#define dataBlkSize 50
-#define idxSize 200
+#define dataBlkSize 4
+#define idxSize 4
 namespace sjtu {
     template <class Key, class Value, class Compare = std::less<Key> >
     class BTree {
@@ -23,7 +23,7 @@ namespace sjtu {
             long pos;//自己的位置
             long idx[idxSize];//指向它下一层的节点
             int len;//有效的儿子数
-            idxNode():len(1){};
+            idxNode():len(1),type(1){};
         };
         struct dataNode{
             int len;//有效记录数
@@ -60,18 +60,17 @@ namespace sjtu {
                 delete tmp;
             }
             if(newNode==NULL) return NULL;
-            else {              //添加索引项,
-                if(t->type==0) {return addIdxBlk((idxNode *)newNode,t);delete (idxNode *)newNode;}
-                else {return addDataBlk((dataNode *)newNode,t);delete (dataNode *)newNode;}
+            else {              //数据块有分裂，添加索引项,
+                if(t->type==0) {return addIdxBlk((idxNode *)newNode,t);}
+                else {return addDataBlk((dataNode *)newNode,t);}
             }
         }
-        dataNode *insertData(const Key &key,const Value &value,dataNode *t){
+        dataNode *insertData(const Key &key,const Value &value,dataNode *t){//返回分裂后多出来的节点指针（不分裂返回NULL）
             if(t->len<dataBlkSize){//x可以插入当前块中
                 int i;
                 for(i=t->len;i>0 && key<t->record[i-1].first;i--)
                     t->record[i]=t->record[i-1];
-                t->record[i].first=key;
-                t->record[i].second=value;
+                t->record[i]=std::make_pair(key,value);
                 (t->len)++;
                 io.seekp(t->pos);
                 io.write(reinterpret_cast<char *> (t),sizeof(idxNode));//把修改的数据块写回去,如果把idxNode改为*t应该也是对的
@@ -84,14 +83,14 @@ namespace sjtu {
             int max = dataBlkSize/2;
             newNode->len=max+1;
             for(i=max,j=dataBlkSize-1;i>=0&&t->record[j].first>key;--i)
-                newNode->record[i]=t->record[j--];  //多出来的数据块放在了右边
-            if(i>=0) {newNode->record[i--].first=key;newNode->record[i--].second=value;}
+                newNode->record[i]=t->record[j--];  //多出来的一半数据块放在了右边
+            if(i>=0) {newNode->record[i--]=std::make_pair(key,value);}//插入在右边
             for(;i>=0;i--) newNode->record[i]=t->record[j--];
+
             t->len=dataBlkSize - max;   //修改左块的大小
             if(j<t->len-1){         //x没有被插入到新数据块中
                 for(;j>=0&&key<t->record[j].first;--j) t->record[j+1]=t->record[j];
-                t->record[j+1].first=key;
-                t->record[j+1].second=value;
+                t->record[j+1]=std::make_pair(key,value);
             }
 
             //把修改后的两个节点写回文件
@@ -102,8 +101,8 @@ namespace sjtu {
 
                 newNode->nxt=t->nxt;//多出来的数据块的下一个是原数据块的下一个
                 io.seekp(0,std::ios::end);
-                tmp.lst=t->nxt=newNode->pos=io.tellp();
                 newNode->lst=t->pos; //要保存上一个结点的位置
+                tmp.lst=t->nxt=newNode->pos=io.tellp();
                 io.write(reinterpret_cast<char *> (newNode),sizeof(dataNode));//把分裂后多出来的的数据块写回去
                 io.seekp(t->pos);
                 io.write(reinterpret_cast<char *> (t),sizeof(dataNode));//把分裂后的原数据块写回去
@@ -111,10 +110,10 @@ namespace sjtu {
                 io.write(reinterpret_cast<char *> (t),sizeof(dataNode));//把分裂后的原数据块的后一块写回去
             }
             else{//如果后面没有节点
-                newNode->nxt=t->nxt;//多出来的数据块的下一个是原数据块的下一个
+                newNode->nxt=-1;
                 io.seekp(0,std::ios::end);
-                t->nxt=newNode->pos=io.tellp();
                 newNode->lst=t->pos; //要保存上一个结点的位置
+                t->nxt=newNode->pos=io.tellp();
                 io.write(reinterpret_cast<char *> (newNode),sizeof(dataNode));//把分裂后多出来的的数据块写回去
                 io.seekp(t->pos);
                 io.write(reinterpret_cast<char *> (t),sizeof(dataNode));//把分裂后的原数据块写回去
@@ -195,14 +194,13 @@ namespace sjtu {
                 ++(t->len);
                 io.seekp(t->pos);
                 io.write(reinterpret_cast<char *> (t),sizeof(idxNode));//把修改后的索引块写回去
-                // TODO
                 return NULL;
             }
-            //分裂结点(索引块)
+            //分裂结点(索引块)，可能是分裂根节点
             idxNode *newIdx=new idxNode;
             newIdx->type=1;
             int max=idxSize/2;
-            newIdx->len =max+1;
+            newIdx->len = max+1;
             int i,j;
 
             if(newNode->record[0].first >t->key[idxSize-2]){//新增加的数据块是最大的
@@ -489,8 +487,9 @@ namespace sjtu {
             dataNode Head;
             Head.pos=io.tellp();
             Head.len=0;//头结点不存放内容
-            io.write(reinterpret_cast<char *> (&Head),sizeof(dataNode));//头结点写入了文件
             head=io.tellp();
+            io.write(reinterpret_cast<char *> (&Head),sizeof(dataNode));//头结点写入了文件
+
         }
         BTree(const BTree& other) {
             //  Copy
@@ -575,10 +574,10 @@ namespace sjtu {
         // element, the second of the pair is Success if it is successfully inserted
         std::pair<iterator, OperationResult> insert(const Key& key, const Value& value) {
             //  insert function
-            idxNode root;
+            idxNode *root=new idxNode;
             if(ROOT==-1){//空树的插入
-                root.type=1;
-                root.key[0]=key;//此处加了一个索引赋值操作
+                root->type=1;
+                //root->key[0]=key;//此处加了一个索引赋值操作
 
                 //添加数据块
                 dataNode p;
@@ -586,7 +585,13 @@ namespace sjtu {
                 io.seekp(0,std::ios::end);
                 p.lst=head;
                 p.pos=io.tellp();
+                root->idx[0]=io.tellp();
                 io.write(reinterpret_cast<char *> (&p),sizeof(dataNode));//把数据块写回
+
+
+                io.seekg(root->idx[0]);
+                dataNode tmp;
+                io.read(reinterpret_cast<char *> (&tmp),sizeof(dataNode));//打开数据块
 
                 //修改头结点状态
                 dataNode Head;
@@ -597,20 +602,20 @@ namespace sjtu {
                 io.write(reinterpret_cast<char *> (&Head),sizeof(dataNode));//把头结点写回
 
                 //生成根
-                root.idx[0]=io.tellp();
                 io.seekp(0,std::ios::end);
-                root.pos=io.tellp();
-                io.write(reinterpret_cast<char *> (&root),sizeof(idxNode));//把生成的根写回
-                ROOT=io.tellp();
+                ROOT=root->pos=io.tellp();
+                io.write(reinterpret_cast<char *> (root),sizeof(idxNode));//把生成的根写回
+
 
                 iterator it;
                 std::pair<iterator, OperationResult> a(it,Success);
+                delete root;
                 return a;
             }
             io.seekg(ROOT);
-            io.read(reinterpret_cast<char *> (&root),sizeof(idxNode));
+            io.read(reinterpret_cast<char *> (root),sizeof(idxNode));
 
-            idxNode *p = insert(key,value,&root);//传入的是root的地址，相当于指向root的指针
+            idxNode *p = insert(key,value,root);//传入的是root的地址，相当于指向root的指针
             if(p!=NULL){    //原根节点被分裂了，处理树增高
 
                 idxNode t;//t代表新的根
@@ -641,6 +646,7 @@ namespace sjtu {
 
             iterator it;
             std::pair<iterator, OperationResult> a(it, Success);
+            delete root;
             return a;
         }
         // Erase: Erase the Key-Value
@@ -723,6 +729,7 @@ namespace sjtu {
 
             //在索引块向下找
             int i;
+            //std::cout<<cur.type<<' ';
             while(true) {
                 for (i = 0; i < cur.len - 1; i++) {//查找所在的子树
                     if (key < cur.key[i]) break;
@@ -731,12 +738,13 @@ namespace sjtu {
                 io.seekg(cur.idx[i]);
                 io.read(reinterpret_cast<char *> (&cur),sizeof(idxNode));
             }
-
             //在数据块中找
+            //std::cout<<i<<' ';
             io.seekg(cur.idx[i]);
             dataNode tmp;
             io.read(reinterpret_cast<char *> (&tmp),sizeof(dataNode));//打开数据块
             for(i=0;i<tmp.len;i++){
+                //std::cout<<tmp.record[0].first<<"jiuhui";
                 if(tmp.record[i].first==key) break;
                 if(i==tmp.len) throw "no match";
             }
