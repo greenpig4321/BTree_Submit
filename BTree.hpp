@@ -4,9 +4,8 @@
 #include <map>
 #include <iostream>
 #include <fstream>
-#define dataBlkSize 51
-#define idxSize 52
-
+#define dataBlkSize 200
+#define idxSize 200
 namespace sjtu {
     template <class Key, class Value, class Compare = std::less<Key> >
     class BTree {
@@ -112,22 +111,9 @@ namespace sjtu {
                 io.seekp(0,std::ios::end);
                 tmp.lst=t.nxt=newNode.pos=io.tellp();
 
-                idxNode root=rdidx(ROOT);
-
                 wrtdata(newNode);
-                root=rdidx(ROOT);
-
                 wrtdata(t);
-                long o=t.pos;
-                long y=sizeof(dataNode);
-
-                root=rdidx(ROOT);
-
-                long x=io.tellp();
-
                 wrtdata(tmp);
-                root=rdidx(ROOT);
-
             }
             else{//如果后面没有节点
                 newNode.nxt=-1;
@@ -136,14 +122,10 @@ namespace sjtu {
                 io.seekp(0,std::ios::end);
                 t.nxt=newNode.pos=io.tellp();
 
-
-                idxNode root=rdidx(ROOT);
-
                 wrtdata(newNode);
                 wrtdata(t);
 
             }
-            idxNode root=rdidx(ROOT);
             return newNode.pos;
         }
 
@@ -549,7 +531,7 @@ namespace sjtu {
         // Default Constructor and Copy Constructor
         BTree() {
             //  Default
-            std::ifstream infile("file");
+            /*std::ifstream infile("file");
             if(!infile) {
                 std::ofstream outfile("file");
                 outfile.close();
@@ -562,7 +544,6 @@ namespace sjtu {
                 io.write(reinterpret_cast<char *> (&ROOT),sizeof(int));
                 io.write(reinterpret_cast<char *> (&HEAD),sizeof(int));
                 io.flush();
-
             }
             else {
                 std::ofstream outfile("file");
@@ -572,8 +553,19 @@ namespace sjtu {
                 io.seekg(0,std::ios::beg);
                 io.write(reinterpret_cast<char *> (&ROOT),sizeof(int));
                 io.write(reinterpret_cast<char *> (&HEAD),sizeof(int));
+                infile.close();
+            }*/
+            std::ofstream outfile("file");
+            outfile.close();
+            io.open("file", std::ios::in | std::ios::out | std::ios::binary);
+            if (!io) { std::cerr << "nomatch"; }
+            ROOT = -1;
+            HEAD = -1;
 
-            }
+            io.seekp(0,std::ios::beg);
+            io.write(reinterpret_cast<char *> (&ROOT),sizeof(int));
+            io.write(reinterpret_cast<char *> (&HEAD),sizeof(int));
+            io.flush();
         }
         BTree(const BTree& other) {
             //  Copy
@@ -679,24 +671,25 @@ namespace sjtu {
                 p.record[0].first=key;
                 p.record[0].second=value;
                 p.lst=HEAD;
-                io.open("file");
                 io.clear();
                 io.seekp(0,std::ios::end);
                 p.pos=io.tellp();
                 wrtdata(p);
 
                 //修改头结点状态
-                io.open("file");
                 head.nxt=p.pos;
                 wrtdata(head);
 
                 //生成根
                 root.idx[0]=p.pos;
-                io.open("file");
                 io.clear();
                 io.seekp(0,std::ios::end);
                 ROOT=root.pos=io.tellp();
                 wrtidx(root);
+
+                io.seekp(0,std::ios::beg);
+                io.write(reinterpret_cast<char *> (&ROOT),sizeof(int));
+                io.write(reinterpret_cast<char *> (&HEAD),sizeof(int));
 
             }
 
@@ -718,11 +711,13 @@ namespace sjtu {
                 dataNode d=rddata(newNode.idx[0]);//读出最小值所在的数据块
 
                 t.key[0]=d.record[0].first;
-                io.open("file");
                 io.clear();
                 io.seekp(0,std::ios::end);
                 ROOT=t.pos=io.tellp();
                 wrtidx(t);
+
+                io.seekp(0,std::ios::beg);
+                io.write(reinterpret_cast<char *> (&ROOT),sizeof(int));
 
             }
 
@@ -803,7 +798,6 @@ namespace sjtu {
         Value at(const Key& key){
 
             idxNode cur=rdidx(ROOT);
-
             //在索引块向下找
             int i;
             while(true) {
