@@ -531,7 +531,7 @@ namespace sjtu {
         // Default Constructor and Copy Constructor
         BTree() {
             //  Default
-            /*std::ifstream infile("file");
+            std::ifstream infile("file");
             if(!infile) {
                 std::ofstream outfile("file");
                 outfile.close();
@@ -554,8 +554,8 @@ namespace sjtu {
                 io.write(reinterpret_cast<char *> (&ROOT),sizeof(int));
                 io.write(reinterpret_cast<char *> (&HEAD),sizeof(int));
                 infile.close();
-            }*/
-            std::ofstream outfile("file");
+            }
+            /*std::ofstream outfile("file");
             outfile.close();
             io.open("file", std::ios::in | std::ios::out | std::ios::binary);
             if (!io) { std::cerr << "nomatch"; }
@@ -565,7 +565,7 @@ namespace sjtu {
             io.seekp(0,std::ios::beg);
             io.write(reinterpret_cast<char *> (&ROOT),sizeof(int));
             io.write(reinterpret_cast<char *> (&HEAD),sizeof(int));
-            io.flush();
+            io.flush();*/
         }
         BTree(const BTree& other) {
             //  Copy
