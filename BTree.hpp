@@ -4,8 +4,8 @@
 #include <map>
 #include <iostream>
 #include <fstream>
-#define dataBlkSize 200
-#define idxSize 200
+#define dataBlkSize 4
+#define idxSize 4
 namespace sjtu {
     template <class Key, class Value, class Compare = std::less<Key> >
     class BTree {
@@ -72,7 +72,7 @@ namespace sjtu {
             dataNode t=rddata(POS);
             if(t.len<dataBlkSize){//x可以插入当前块中
                 int i;
-                for(i=t.len;i>0 && key<t.record[i-1].first;i--)
+                for(i=t.len;i>0 && key<t.record[i-1].first;--i)
                 {t.record[i].first=t.record[i-1].first;t.record[i].second=t.record[i-1].second;}
                 t.record[i].first=key;
                 t.record[i].second=value;
@@ -92,8 +92,10 @@ namespace sjtu {
             newNode.len=max+1;
             for(i=max,j=dataBlkSize-1;i>=0&&t.record[j].first>key;--i)
             {newNode.record[i].first=t.record[j].first;newNode.record[i].second=t.record[j].second;j--;}  //多出来的一半数据块放在了右边,原来块的大小正好为dataBlkSize
+
             if(i>=0) {newNode.record[i].first=key;newNode.record[i].second=value;i--;}//插入在右边
-            for(;i>=0;i--) {newNode.record[i].first=t.record[j].first;newNode.record[i].first=t.record[j].first;j--;}
+
+            for(;i>=0;i--) {newNode.record[i].first=t.record[j].first;newNode.record[i].second=t.record[j].second;j--;}
 
             t.len=dataBlkSize - max;   //修改左块的大小
             if(j<t.len-1){         //x没有被插入到新数据块中
@@ -197,11 +199,14 @@ namespace sjtu {
                     t.key[i]=t.key[i-1];
                     t.idx[i+1] =t.idx[i];
                 }
+
                 t.key[i] =newNode.record[0].first;
                 t.idx[i+1] =newNode.pos;
                 ++(t.len);
                 wrtidx(t);//把修改后的索引块写回去
+
                 return -1;
+
             }
             //分裂结点(索引块)
             idxNode newIdx;
@@ -690,6 +695,8 @@ namespace sjtu {
                 io.seekp(0,std::ios::beg);
                 io.write(reinterpret_cast<char *> (&ROOT),sizeof(int));
                 io.write(reinterpret_cast<char *> (&HEAD),sizeof(int));
+                io.flush();
+                return ;
 
             }
 
