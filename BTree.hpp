@@ -549,22 +549,20 @@ namespace sjtu {
         // Default Constructor and Copy Constructor
         BTree() {
             //  Default
-            std::ofstream infile("file");
+            std::ifstream infile("file");
             if(!infile) {
                 std::ofstream outfile("file");
                 outfile.close();
                 io.open("file", std::ios::in | std::ios::out | std::ios::binary);
                 if (!io) { std::cerr << "nomatch"; }
-                //long test=std::ios::end;
                 ROOT = -1;
                 HEAD = -1;
-                
+
                 io.seekp(0,std::ios::beg);
                 io.write(reinterpret_cast<char *> (&ROOT),sizeof(int));
                 io.write(reinterpret_cast<char *> (&HEAD),sizeof(int));
                 io.flush();
-                
-                //if(std::ios::end!=sizeof(dataNode)+HEAD) {throw "dnw";};
+
             }
             else {
                 std::ofstream outfile("file");
@@ -574,6 +572,7 @@ namespace sjtu {
                 io.seekg(0,std::ios::beg);
                 io.write(reinterpret_cast<char *> (&ROOT),sizeof(int));
                 io.write(reinterpret_cast<char *> (&HEAD),sizeof(int));
+
             }
         }
         BTree(const BTree& other) {
@@ -698,6 +697,7 @@ namespace sjtu {
                 io.seekp(0,std::ios::end);
                 ROOT=root.pos=io.tellp();
                 wrtidx(root);
+
             }
 
             idxNode tmp=rdidx(ROOT);
