@@ -556,8 +556,8 @@ namespace sjtu {
                 io.open("file", std::ios::in | std::ios::out | std::ios::binary);
                 if (!io) { std::cerr << "nomatch"; }
                 io.seekg(0,std::ios::beg);
-                io.write(reinterpret_cast<char *> (&ROOT),sizeof(int));
-                io.write(reinterpret_cast<char *> (&HEAD),sizeof(int));
+                io.read(reinterpret_cast<char *> (&ROOT),sizeof(int));
+                io.read(reinterpret_cast<char *> (&HEAD),sizeof(int));
                 infile.close();
             }
             /*std::ofstream outfile("file");
