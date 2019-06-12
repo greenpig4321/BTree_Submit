@@ -1,15 +1,12 @@
-//
-// Created by 郑文鑫 on 2019-03-09.
-//
-#include "utility.hpp"
 #include <functional>
 #include <cstddef>
 #include "exception.hpp"
 #include <map>
 #include <iostream>
 #include <fstream>
-#define dataBlkSize 20
-#define idxSize 200
+#define dataBlkSize 51
+#define idxSize 52
+
 namespace sjtu {
     template <class Key, class Value, class Compare = std::less<Key> >
     class BTree {
@@ -18,12 +15,12 @@ namespace sjtu {
         // Your private members go here
         typedef std::pair< Key, Value> value_type;
         struct idxNode{
-            int type;//type为零表示下一层为索引节点，为1表示下一层是数据节点
-            Key key[idxSize-1];
             long pos;//自己的位置
+            Key key[idxSize-1];
+            int type;//type为零表示下一层为索引节点，为1表示下一层是数据节点
             long idx[idxSize];//指向它下一层的节点
             int len;//有效的儿子数
-            idxNode():len(1),type(1){};
+            idxNode():len(1),type(1),pos(-1){};
             idxNode(const idxNode &node){
                 type=node.type;
                 pos=node.pos;
@@ -39,7 +36,7 @@ namespace sjtu {
             long pos;//自己的位置
             long nxt;//下一个数据块
             long lst;//上一个数据块
-            dataNode():len(1),lst(-1),nxt(-1),pos(-1){};
+            dataNode():len(1),pos(-1),nxt(-1),lst(-1){};
             dataNode(const dataNode &node){
                 pos=node.pos;
                 nxt=node.nxt;
@@ -61,12 +58,10 @@ namespace sjtu {
                 if(key<t.key[i]) break;//到达第二层
             }
             if(t.type==0) {
-                idxNode tmp=rdidx(t.idx[i]);
-                newNode = insert (key, value, tmp.pos);//递归过程，直到下一层为数据块
+                newNode = insert (key, value, t.idx[i]);//递归过程，直到下一层为数据块
             }
             else {
-                dataNode tmp=rddata(t.idx[i]);
-                newNode = insertData(key,value, tmp.pos);//添加数据
+                newNode = insertData(key,value, t.idx[i]);//添加数据
             }
             if(newNode==-1) return -1;
             else {              //有分裂，添加索引项,
@@ -79,10 +74,15 @@ namespace sjtu {
             if(t.len<dataBlkSize){//x可以插入当前块中
                 int i;
                 for(i=t.len;i>0 && key<t.record[i-1].first;i--)
-                    {t.record[i].first=t.record[i-1].first;t.record[i].second=t.record[i-1].second;}
-                t.record[i]=std::make_pair(key,value);
+                {t.record[i].first=t.record[i-1].first;t.record[i].second=t.record[i-1].second;}
+                t.record[i].first=key;
+                t.record[i].second=value;
                 (t.len)++;
+
                 wrtdata(t);
+
+                dataNode v=rddata(t.pos);
+
                 return -1;
             }
 
@@ -92,14 +92,14 @@ namespace sjtu {
             int max = dataBlkSize/2;
             newNode.len=max+1;
             for(i=max,j=dataBlkSize-1;i>=0&&t.record[j].first>key;--i)
-                {newNode.record[i].first=t.record[j].first;newNode.record[i].second=newNode.record[j].second;j--;}  //多出来的一半数据块放在了右边,原来块的大小正好为dataBlkSize
-            if(i>=0) {newNode.record[i--]=std::make_pair(key,value);}//插入在右边
-            for(;i>=0;i--) newNode.record[i]=t.record[j--];
+            {newNode.record[i].first=t.record[j].first;newNode.record[i].second=t.record[j].second;j--;}  //多出来的一半数据块放在了右边,原来块的大小正好为dataBlkSize
+            if(i>=0) {newNode.record[i].first=key;newNode.record[i].second=value;i--;}//插入在右边
+            for(;i>=0;i--) {newNode.record[i].first=t.record[j].first;newNode.record[i].first=t.record[j].first;j--;}
 
             t.len=dataBlkSize - max;   //修改左块的大小
             if(j<t.len-1){         //x没有被插入到新数据块中
-                for(;j>=0&&key<t.record[j].first;--j) t.record[j+1]=t.record[j];
-                t.record[j+1]=std::make_pair(key,value);
+                for(;j>=0&&key<t.record[j].first;--j) {t.record[j+1].first=t.record[j].first;t.record[j+1].second=t.record[j].second;}
+                t.record[j+1].first=key;t.record[j+1].second=value;
             }
 
             //把修改后的两个节点写回文件
@@ -108,28 +108,50 @@ namespace sjtu {
 
                 newNode.nxt=t.nxt;//多出来的数据块的下一个是原数据块的下一个
                 newNode.lst=t.pos;
+                io.clear();
                 io.seekp(0,std::ios::end);
                 tmp.lst=t.nxt=newNode.pos=io.tellp();
+
+                idxNode root=rdidx(ROOT);
+
                 wrtdata(newNode);
+                root=rdidx(ROOT);
+
                 wrtdata(t);
+                long o=t.pos;
+                long y=sizeof(dataNode);
+
+                root=rdidx(ROOT);
+
+                long x=io.tellp();
+
                 wrtdata(tmp);
+                root=rdidx(ROOT);
+
             }
             else{//如果后面没有节点
                 newNode.nxt=-1;
                 newNode.lst=t.pos; //要保存上一个结点的位置
+                io.clear();
                 io.seekp(0,std::ios::end);
                 t.nxt=newNode.pos=io.tellp();
 
+
+                idxNode root=rdidx(ROOT);
+
                 wrtdata(newNode);
                 wrtdata(t);
+
             }
+            idxNode root=rdidx(ROOT);
             return newNode.pos;
         }
 
         long addIdxBlk(long POS1,long POS2){
             idxNode p=rdidx(POS1);//新分裂出来的idxNode
-            idxNode newNode=p;
+            idxNode newNode=rdidx(POS1);
             idxNode t=rdidx(POS2);//上层
+
             //找新插入块的最小值存入min
             while(p.type==0) p=rdidx(p.idx[0]);
             dataNode d=rddata(p.idx[0]);
@@ -145,6 +167,7 @@ namespace sjtu {
                 t.idx[i+1] =newNode.pos;
                 ++(t.len);
                 wrtidx(t);
+
                 return -1;
             }
             //分裂当前结点
@@ -179,6 +202,7 @@ namespace sjtu {
             io.seekp(0,std::ios::end);
             newIdx.pos=io.tellp();
             wrtidx(newIdx);
+
             return newIdx.pos;
         }
         long addDataBlk(long POS1,long POS2){//数据块有分裂，处理上一层索引块
@@ -191,7 +215,7 @@ namespace sjtu {
                     t.key[i]=t.key[i-1];
                     t.idx[i+1] =t.idx[i];
                 }
-                t.key[i]=newNode.record[0].first;
+                t.key[i] =newNode.record[0].first;
                 t.idx[i+1] =newNode.pos;
                 ++(t.len);
                 wrtidx(t);//把修改后的索引块写回去
@@ -231,6 +255,7 @@ namespace sjtu {
             io.seekp(0,std::ios::end);
             newIdx.pos=io.tellp();
             wrtidx(newIdx);
+
             return newIdx.pos;
         }
         void idxNode_copy(long POS,std::fstream IO){//这里的*t指向other中的将要被抄进来的结点
@@ -246,24 +271,51 @@ namespace sjtu {
             }
             return ;
         }
-        void wrtidx(idxNode node) {
-            io.seekp(node.pos);
+        void wrtidx(idxNode &node) {
+            io.clear();
+            io.seekp(0,std::ios::beg);
+            long t=io.tellp();
+            io.seekp(node.pos,std::ios::beg);
             io.write(reinterpret_cast<char *> (&node),sizeof(idxNode));
+
+            io.flush();
         }
-        void wrtdata(dataNode node) {
-            io.seekp(node.pos);
-            io.write(reinterpret_cast<char *> (&node),sizeof(dataNode));
+        void wrtdata(dataNode &node) {
+            io.clear();
+            io.seekp(0,std::ios::beg);
+            long t=io.tellp();
+            io.seekp(node.pos,std::ios::beg);
+            io.write(reinterpret_cast<char *> (&node.len),sizeof(int));
+            io.write(reinterpret_cast<char *> (&node.record[0]),sizeof(node.record));
+            io.write(reinterpret_cast<char *> (&node.pos),sizeof(int));
+            io.write(reinterpret_cast<char *> (&node.nxt),sizeof(int));
+            io.write(reinterpret_cast<char *> (&node.lst),sizeof(int));
+
+            io.flush();
+
         }
         idxNode rdidx(long offset){
-            io.seekg(offset);
+            io.clear();
+            io.seekg(0,std::ios::beg);
+            long t=io.tellg();
+            io.seekg(offset,std::ios::beg);
             idxNode node;
             io.read(reinterpret_cast<char *> (&node),sizeof(idxNode));
+
+            io.flush();
+
             return node;
         }
         dataNode rddata(long offset){
-            io.seekg(offset);
+            io.clear();
+            io.seekg(0,std::ios::beg);
+            long t=io.tellg();
+            io.seekg(offset,std::ios::beg);
             dataNode node;
             io.read(reinterpret_cast<char *> (&node),sizeof(dataNode));
+
+            io.flush();
+
             return node;
         }
 
@@ -497,13 +549,32 @@ namespace sjtu {
         // Default Constructor and Copy Constructor
         BTree() {
             //  Default
-            std::ofstream outfile("file");
-            io.open("file");
-            if(!io) {std::cerr<<"nomatch";}
-            //long test=std::ios::end;
-            ROOT=-1;
-            HEAD=-1;
-            //if(std::ios::end!=sizeof(dataNode)+HEAD) {throw "dnw";};
+            std::ofstream infile("file");
+            if(!infile) {
+                std::ofstream outfile("file");
+                outfile.close();
+                io.open("file", std::ios::in | std::ios::out | std::ios::binary);
+                if (!io) { std::cerr << "nomatch"; }
+                //long test=std::ios::end;
+                ROOT = -1;
+                HEAD = -1;
+                
+                io.seekp(0,std::ios::beg);
+                io.write(reinterpret_cast<char *> (&ROOT),sizeof(int));
+                io.write(reinterpret_cast<char *> (&HEAD),sizeof(int));
+                io.flush();
+                
+                //if(std::ios::end!=sizeof(dataNode)+HEAD) {throw "dnw";};
+            }
+            else {
+                std::ofstream outfile("file");
+                outfile.close();
+                io.open("file", std::ios::in | std::ios::out | std::ios::binary);
+                if (!io) { std::cerr << "nomatch"; }
+                io.seekg(0,std::ios::beg);
+                io.write(reinterpret_cast<char *> (&ROOT),sizeof(int));
+                io.write(reinterpret_cast<char *> (&HEAD),sizeof(int));
+            }
         }
         BTree(const BTree& other) {
             //  Copy
@@ -589,40 +660,44 @@ namespace sjtu {
         // Insert: Insert certain Key-Value into the database
         // Return a pair, the first of the pair is the iterator point to the new
         // element, the second of the pair is Success if it is successfully inserted
-        std::pair<iterator, OperationResult> insert(const Key& key, const Value& value) {
+        void insert(const Key& key, const Value& value) {
             //  insert function
+
             if(ROOT==-1){//空树的插入
                 idxNode root;
                 root.type=1;
                 root.len=1;
 
                 dataNode head;
+                io.clear();
+                head.len=0;
                 io.seekp(0,std::ios::end);
                 HEAD=head.pos=io.tellp();
-                head.len=0;
                 wrtdata(head);
 
                 //添加数据块
                 dataNode p;
-                p.record[0]=std::make_pair(key,value);
+                p.record[0].first=key;
+                p.record[0].second=value;
                 p.lst=HEAD;
+                io.open("file");
+                io.clear();
                 io.seekp(0,std::ios::end);
                 p.pos=io.tellp();
                 wrtdata(p);
 
                 //修改头结点状态
+                io.open("file");
                 head.nxt=p.pos;
                 wrtdata(head);
 
                 //生成根
                 root.idx[0]=p.pos;
+                io.open("file");
+                io.clear();
                 io.seekp(0,std::ios::end);
                 ROOT=root.pos=io.tellp();
                 wrtidx(root);
-
-                iterator it;
-                std::pair<iterator, OperationResult> a(it,Success);
-                return a;
             }
 
             idxNode tmp=rdidx(ROOT);
@@ -643,20 +718,21 @@ namespace sjtu {
                 dataNode d=rddata(newNode.idx[0]);//读出最小值所在的数据块
 
                 t.key[0]=d.record[0].first;
-                t.pos=std::ios::end;
+                io.open("file");
+                io.clear();
+                io.seekp(0,std::ios::end);
+                ROOT=t.pos=io.tellp();
                 wrtidx(t);
 
             }
-            iterator it;
-            std::pair<iterator, OperationResult> a(it, Success);
-            return a;
+
         }
         // Erase: Erase the Key-Value
         // Return Success if it is successfully erased
         // Return Fail if the key doesn't exist in the database
-        OperationResult erase(const Key& key) {
+        void erase(const Key& key) {
             // TODO erase function
-            return Fail;  // If you can't finish erase part, just remaining here.
+             // If you can't finish erase part, just remaining here.
         }
         // Return a iterator to the beginning
         iterator begin() {
